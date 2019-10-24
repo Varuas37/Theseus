@@ -197,10 +197,10 @@ int clampInt(int value, int minValue, int maxValue)
 
 void moveRobot(boolean dirFrontL, int powerFrontL, boolean dirBackL, int powerBackL, boolean dirFrontR, int powerFrontR, boolean dirBackR, int powerBackR)
 {
-  digitalWrite(PIN_FRONT_LEFT_DIR, dirFrontL);
-  digitalWrite(PIN_BACK_LEFT_DIR, dirBackL);
-  digitalWrite(PIN_FRONT_RIGHT_DIR, !dirFrontR);
-  digitalWrite(PIN_BACK_RIGHT_DIR, !dirBackR);
+  digitalWrite(PIN_FRONT_LEFT_DIR, dirFrontL ? HIGH : LOW);
+  digitalWrite(PIN_BACK_LEFT_DIR, dirBackL ? HIGH : LOW);
+  digitalWrite(PIN_FRONT_RIGHT_DIR, !dirFrontR ? HIGH : LOW);
+  digitalWrite(PIN_BACK_RIGHT_DIR, !dirBackR ? HIGH : LOW);
 
   int normalizedFrontL = clampInt(powerFrontL * 2, 0, 255);
   int normalizedBackL = clampInt(powerBackL * 2, 0, 255);
