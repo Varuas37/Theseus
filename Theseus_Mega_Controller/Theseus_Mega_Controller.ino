@@ -19,7 +19,7 @@
 #define PIN_BACK_LEFT_PWM   4
 #define PIN_BACK_RIGHT_PWM  5
 
-#define DIGITAL_SPEED 127
+#define DIGITAL_SPEED 63
 
 // Magic bluetooth setup stuff
 USB Usb;
@@ -176,7 +176,6 @@ int checkInDeadzone(int value)
 
 // Clamps value between minValue and maxValue
 // Has no effect on values between the two
-// Value may be any int type, minValue and maxValue MUST be 8-bit
 int clampInt(int value, int minValue, int maxValue)
 {
   if (value < minValue)
@@ -197,10 +196,11 @@ int clampInt(int value, int minValue, int maxValue)
 
 void moveRobot(boolean dirFrontL, int powerFrontL, boolean dirBackL, int powerBackL, boolean dirFrontR, int powerFrontR, boolean dirBackR, int powerBackR)
 {
-  digitalWrite(PIN_FRONT_LEFT_DIR, dirFrontL ? HIGH : LOW);
-  digitalWrite(PIN_BACK_LEFT_DIR, dirBackL ? HIGH : LOW);
-  digitalWrite(PIN_FRONT_RIGHT_DIR, !dirFrontR ? HIGH : LOW);
-  digitalWrite(PIN_BACK_RIGHT_DIR, !dirBackR ? HIGH : LOW);
+  
+  digitalWrite(PIN_FRONT_LEFT_DIR, (dirFrontL) ? LOW: HIGH);
+  digitalWrite(PIN_BACK_LEFT_DIR, (dirBackL) ? LOW : HIGH);
+  digitalWrite(PIN_FRONT_RIGHT_DIR, (dirFrontR) ? HIGH: LOW);
+  digitalWrite(PIN_BACK_RIGHT_DIR, (dirBackR) ? HIGH : LOW);
 
   int normalizedFrontL = clampInt(powerFrontL * 2, 0, 255);
   int normalizedBackL = clampInt(powerBackL * 2, 0, 255);
