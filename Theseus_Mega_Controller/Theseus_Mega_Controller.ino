@@ -1,28 +1,12 @@
 #include <PS4BT.h>
 #include <usbhub.h>
+#include <Servo.h>
 
 // Satisfy the IDE, which needs to see the include statment in the ino too.
 #ifdef dobogusinclude
 #include <spi4teensy3.h>
 #endif
 #include <SPI.h>
-
-/*
-#define DEADZONE 13
-#define STICK_CENTER 127
-
-#define PIN_FRONT_LEFT_DIR  26
-#define PIN_FRONT_RIGHT_DIR 22
-#define PIN_BACK_LEFT_DIR   28
-#define PIN_BACK_RIGHT_DIR  24
-
-#define PIN_FRONT_LEFT_PWM  3
-#define PIN_FRONT_RIGHT_PWM 4
-#define PIN_BACK_LEFT_PWM   2
-#define PIN_BACK_RIGHT_PWM  5
-
-#define DIGITAL_SPEED 127
-*/
 
 const int DEADZONE = 13;
 const int STICK_CENTER = 127;
@@ -36,7 +20,25 @@ const int PIN_FRONT_RIGHT_PWM = 4;
 const int PIN_BACK_LEFT_PWM   = 2;
 const int PIN_BACK_RIGHT_PWM  = 5;
 
-const int DIGITAL_SPEED = 64;
+const int ARM_PIN = 8;
+const int CLAW_PIN = 9;
+const int ARM_SPEED = 5;
+const int CLAW_SPEED = 2;
+
+const int WALK_SPEED = 64;
+const int RUN_SPEED = 127;
+
+const int WALK_COLOR[3] = {0,0,255};
+const int RUN_COLOR[3] = {255,0,0};
+
+int armPos = 0;
+int clawPos = 0;
+
+bool runMode = false;
+int currentSpeed = WALK_SPEED;
+
+Servo arm;
+Servo claw;
 
 // Magic bluetooth setup stuff
 USB Usb;
@@ -53,8 +55,6 @@ PS4BT PS4(&Btd, PAIR);
 
 bool printAngle, printTouch;
 uint8_t oldL2Value, oldR2Value;
-// Default to digital mode
-bool analogMode = false;
 
 void setup() 
 {
@@ -79,6 +79,14 @@ void setup()
   pinMode(PIN_BACK_LEFT_PWM, OUTPUT);
   pinMode(PIN_FRONT_RIGHT_PWM, OUTPUT);
   pinMode(PIN_BACK_RIGHT_PWM, OUTPUT);
+
+  // Setup servo controllers
+  arm.attach(ARM_PIN);
+  claw.attach(CLAW_PIN);
+
+  // Setup swag
+  PS4.setLed(WALK_COLOR[0], WALK_COLOR[1], WALK_COLOR[2]);
+  
 }
 
 void loop() 
@@ -86,40 +94,32 @@ void loop()
   Usb.Task();
   if (PS4.connected()) 
   {
-    if(PS4.getButtonClick(OPTIONS))
+
+    if (PS4.getButtonClick(OPTIONS))
     {
-      analogMode = !analogMode;
+      while(1){}; // Halt
     }
 
-    if(analogMode)
+    if (PS4.getButtonClick(SHARE))
     {
-      int leftStickX = PS4.getAnalogHat(LeftHatX);
-      int leftStickY = PS4.getAnalogHat(LeftHatY);
-      int rightStickX = PS4.getAnalogHat(RightHatX);
-      int rightStickY = PS4.getAnalogHat(RightHatY);
-  
-      int leftDeadzoneX = checkInDeadzone(leftStickX);
-      int leftDeadzoneY = checkInDeadzone(leftStickY);
-      int rightDeadzoneX = checkInDeadzone(rightStickX);
-      int rightDeadzoneY = checkInDeadzone(rightStickY);
-  
-      if (leftDeadzoneY != 1 && leftDeadzoneX == 1 && rightDeadzoneX == 1)
+      moveRobot(true, WALK_SPEED, true, WALK_SPEED, true, WALK_SPEED, true, WALK_SPEED);
+      delay(3500);
+    }
+    
+    if(PS4.getButtonClick(TOUCHPAD))
+    {
+      if (runMode)
       {
-        boolean dir = (leftDeadzoneY == 2 ? true : false);
-        int normalizedPower = (leftDeadzoneY == 2 ? leftStickY : abs(leftStickY - STICK_CENTER));
-        moveRobot(dir, normalizedPower, dir, normalizedPower, dir, normalizedPower, dir, normalizedPower);
+        runMode = false;
+        PS4.setLed(WALK_COLOR[0], WALK_COLOR[1], WALK_COLOR[2]);
+        currentSpeed = WALK_SPEED;
       }
-  
-      if (leftDeadzoneY == 1 && leftDeadzoneX == 0 && rightDeadzoneX == 1)
+
+      else
       {
-        int normalizedPower = (leftDeadzoneX == 2 ? leftStickX : abs(leftStickX - STICK_CENTER));
-        moveRobot(false, normalizedPower, true, normalizedPower, false, 0, false, 0);
-      }
-  
-      if (leftDeadzoneY == 1 && leftDeadzoneX == 0 && rightDeadzoneX == 1)
-      {
-        int normalizedPower = (leftDeadzoneX == 2 ? leftStickX : abs(leftStickX - STICK_CENTER));
-        moveRobot(false, 0, false, 0, false, normalizedPower, true, normalizedPower);
+        runMode = true;
+        PS4.setLed(RUN_COLOR[0], RUN_COLOR[1], RUN_COLOR[2]);
+        currentSpeed = RUN_SPEED;
       }
     }
 
@@ -131,35 +131,72 @@ void loop()
       bool strafeRight = PS4.getButtonPress(RIGHT);
       bool turnLeft = PS4.getButtonPress(CIRCLE);
       bool turnRight = PS4.getButtonPress(SQUARE);
+      bool armUp = PS4.getButtonPress(R1);
+      bool armDown = PS4.getButtonPress(L1);
+      bool clawOpen = PS4.getButtonPress(TRIANGLE);
+      bool clawClose = PS4.getButtonPress(CROSS);
 
-      if (forward)
+      if(armUp)
       {
-        moveRobot(true, DIGITAL_SPEED, true, DIGITAL_SPEED, true, DIGITAL_SPEED, true, DIGITAL_SPEED);
+        armPos = max(armPos + ARM_SPEED, 180);
+      }
+
+      else if(armDown)
+      {
+        armPos = max(armPos - ARM_SPEED, 0);
+      }
+
+      if(clawOpen)
+      {
+        clawPos = max(clawPos + CLAW_SPEED, 180);
+      }
+
+      else if(clawClose)
+      {
+        clawPos = max(clawPos - CLAW_SPEED, 0);
+      }
+
+      arm.write(armPos);
+      claw.write(clawPos);
+
+      if (forward && !turnLeft && !turnRight)
+      {
+        moveRobot(true, currentSpeed, true, currentSpeed, true, currentSpeed, true, currentSpeed);
+      }
+
+      else if(forward && turnLeft)
+      {
+        moveRobot(true, RUN_SPEED, true, RUN_SPEED, false, 0, false, 0);
+      }
+
+      else if(forward && turnRight)
+      {
+        moveRobot(false, 0, false, 0, true, RUN_SPEED, true, RUN_SPEED);
       }
 
       else if(strafeLeft)
       {
-        moveRobot(false, DIGITAL_SPEED, true, DIGITAL_SPEED, false, DIGITAL_SPEED, true, DIGITAL_SPEED);
+        moveRobot(false, currentSpeed, true, currentSpeed, true, currentSpeed, false, currentSpeed);
       }
 
       else if(strafeRight)
       {
-        moveRobot(false, DIGITAL_SPEED, true, DIGITAL_SPEED, false, DIGITAL_SPEED, true, DIGITAL_SPEED);
+        moveRobot(true, currentSpeed, false, currentSpeed, false, currentSpeed, true, currentSpeed);
       }
 
       else if(backward)
       {
-        moveRobot(false, DIGITAL_SPEED, false, DIGITAL_SPEED, false, DIGITAL_SPEED, false, DIGITAL_SPEED);
+        moveRobot(false, currentSpeed, false, currentSpeed, false, currentSpeed, false, currentSpeed);
       }
 
       else if(turnLeft)
       {
-        moveRobot(true, DIGITAL_SPEED, true, DIGITAL_SPEED, false, DIGITAL_SPEED, false, DIGITAL_SPEED);
+        moveRobot(true, currentSpeed, true, currentSpeed, false, currentSpeed, false, currentSpeed);
       }
 
       else if(turnRight)
       {
-        moveRobot(false, DIGITAL_SPEED,  false, DIGITAL_SPEED, true, DIGITAL_SPEED, true, DIGITAL_SPEED);
+        moveRobot(false, currentSpeed,  false, currentSpeed, true, currentSpeed, true, currentSpeed);
       }
       else
       {
