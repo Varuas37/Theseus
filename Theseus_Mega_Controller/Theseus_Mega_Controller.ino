@@ -34,7 +34,7 @@ const int RUN_COLOR[3] = {255,0,0};
 int armPos = 0;
 int clawPos = 0;
 
-bool runMode = false;
+bool runMode = true;
 int currentSpeed = WALK_SPEED;
 
 Servo arm;
@@ -100,13 +100,13 @@ void loop()
       while(1){}; // Halt
     }
 
-    if (PS4.getButtonClick(SHARE))
+    if (PS4.getButtonClick(TOUCHPAD))
     {
       moveRobot(true, WALK_SPEED, true, WALK_SPEED, true, WALK_SPEED, true, WALK_SPEED);
-      delay(3500);
+      delay(3250);
     }
     
-    if(PS4.getButtonClick(TOUCHPAD))
+    if(PS4.getButtonClick(SHARE))
     {
       if (runMode)
       {
