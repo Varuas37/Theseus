@@ -1,5 +1,6 @@
-  #include <PS4BT.h>
+#include <PS4BT.h>
 #include <usbhub.h>
+#include <Servo.h>
 
 // Satisfy the IDE, which needs to see the include statment in the ino too.
 #ifdef dobogusinclude
@@ -19,19 +20,23 @@ const int PIN_FRONT_RIGHT_PWM = 4;
 const int PIN_BACK_LEFT_PWM   = 2;
 const int PIN_BACK_RIGHT_PWM  = 5;
 
-const int SERVO_STOP = 95;
+const int ARM_PIN = 8;
+const int CLAW_PIN = 9;
+const int ARM_SPEED = 5;
+const int CLAW_SPEED = 2;
 
-const int ARM_PIN = 9;
-const int CLAW_PIN = 10;
-
+const int SLOW_SPEED = 30;
 const int WALK_SPEED = 64;
 const int RUN_SPEED = 127;
 
+const int SLOW_COLOR[3] = {0,255,0};
 const int WALK_COLOR[3] = {0,0,255};
 const int RUN_COLOR[3] = {255,0,0};
 
+int armPos = 0;
+int clawPos = 0;
 
-bool runMode = true;
+int runMode = 0;
 int currentSpeed = WALK_SPEED;
 
 Servo arm;
@@ -53,15 +58,19 @@ PS4BT PS4(&Btd, PAIR);
 bool printAngle, printTouch;
 uint8_t oldL2Value, oldR2Value;
 
-int[2] unoMessage = {0, 0};
-
 void setup() 
 {
-  
+  //More magic bluetooth stuff
+  Serial.begin(115200);
+#if !defined(__MIPSEL__)
+  while (!Serial); // Wait for serial port to connect - used on Leonardo, Teensy and other boards with built-in USB CDC serial connection
+#endif
   if (Usb.Init() == -1) 
   {
+    Serial.print(F("\r\nOSC did not start"));
     while (1); // Halt
   }
+  Serial.print(F("\r\nPS4 Bluetooth Library Started"));
 
   // Put all pins we care about into the right mode)
   pinMode(PIN_FRONT_LEFT_DIR, OUTPUT);
@@ -74,25 +83,19 @@ void setup()
   pinMode(PIN_BACK_RIGHT_PWM, OUTPUT);
 
   // Setup servo controllers
- // pinMode(SERVO, OUTPUT);
- //pinMode(ARM_PIN, OUTPUT);
- //pinMode(CLAW_PIN, OUTPUT);n
- // raise.attach(SERVO);
- arm.attach(ARM_PIN);
- claw.attach(CLAW_PIN);
- arm.write(SERVO_STOP);
- claw.write(SERVO_STOP);
+  arm.attach(ARM_PIN);
+  claw.attach(CLAW_PIN);
+  arm.write(95);
 
   // Setup swag
   PS4.setLed(WALK_COLOR[0], WALK_COLOR[1], WALK_COLOR[2]);
-
-
+  
 }
+
+int test = 90;
 
 void loop() 
 {
-  Serial.begin(9600);
-  
   Usb.Task();
   if (PS4.connected()) 
   {
@@ -110,107 +113,114 @@ void loop()
     
     if(PS4.getButtonClick(SHARE))
     {
-      if (runMode)
+      if (runMode == 0)
       {
-        runMode = false;
+        runMode = 1;
         PS4.setLed(WALK_COLOR[0], WALK_COLOR[1], WALK_COLOR[2]);
         currentSpeed = WALK_SPEED;
       }
 
-      else
+      else if(runMode == 1)
       {
-        runMode = true;
+        runMode = 2;
         PS4.setLed(RUN_COLOR[0], RUN_COLOR[1], RUN_COLOR[2]);
         currentSpeed = RUN_SPEED;
       }
-    }
-    
-    bool forward = PS4.getButtonPress(UP);
-    bool backward = PS4.getButtonPress(DOWN);
-    bool strafeLeft = PS4.getButtonPress(LEFT);
-    bool strafeRight = PS4.getButtonPress(RIGHT);
-    bool turnLeft = PS4.getButtonPress(CIRCLE);
-    bool turnRight = PS4.getButtonPress(SQUARE);
-    bool armUp = PS4.getButtonPress(R1);
-    bool armDown = PS4.getButtonPress(L1);
-    bool clawOpen = PS4.getButtonPress(TRIANGLE);
-    bool clawClose = PS4.getButtonPress(CROSS);
 
-    
-    if (armUp)
-    {
-      unoMessage[0] = 1;
-    }
-
-    else if (armDown)
-    {
-      unoMessage[0] = 2;
+      else if(runMode == 2)
+      {
+        runMode = 0;
+        PS4.setLed(SLOW_COLOR[0], SLOW_COLOR[1], SLOW_COLOR[2]);
+        currentSpeed = SLOW_SPEED;
+      }
     }
 
     else
     {
-      unoMessage[0] = 0;
-    }
+      bool forward = PS4.getButtonPress(UP);
+      bool backward = PS4.getButtonPress(DOWN);
+      bool strafeLeft = PS4.getButtonPress(LEFT);
+      bool strafeRight = PS4.getButtonPress(RIGHT);
+      bool turnLeft = PS4.getButtonPress(CIRCLE);
+      bool turnRight = PS4.getButtonPress(SQUARE);
+      bool armUp = PS4.getButtonPress(R1);
+      bool armDown = PS4.getButtonPress(L1);
+      bool clawOpen = PS4.getButtonPress(TRIANGLE);
+      bool clawClose = PS4.getButtonPress(CROSS);
 
-    if (clawOpen)
-    {
-      unoMessage[1] = 1;
-    }
+      if(armUp)
+      {
+        arm.write(180);
+      }
 
-    else if(clawClose)
-    {
-      unoMessage[1] = 2;
-    }
+      else if(armDown)
+      {
+        arm.write(0);
+      }
 
-    else
-    {
-      unoMessage[1] = 0;
-    }
+      else
+      {
+        arm.write(95);
+      }
 
-    Serial.write(unoMessage, 2);
-    
-    if (forward && !turnLeft && !turnRight)
-    {
-      moveRobot(true, currentSpeed, true, currentSpeed, true, currentSpeed, true, currentSpeed);
-    }
+     if(clawOpen)
+      {
+        claw.write(135);
+      }
 
-    else if(forward && turnLeft)
-    {
-      moveRobot(true, RUN_SPEED, true, RUN_SPEED, false, 0, false, 0);
-    }
+      else if(clawClose)
+      {
+        claw.write(45);
+      }
 
-    else if(forward && turnRight)
-    {
-      moveRobot(false, 0, false, 0, true, RUN_SPEED, true, RUN_SPEED);
-    }
+      else
+      {
+        claw.write(93);
+      }
 
-    else if(strafeLeft)
-    {
-      moveRobot(false, currentSpeed, true, currentSpeed, true, currentSpeed, false, currentSpeed);
-    }
+      if (forward && !turnLeft && !turnRight)
+      {
+        moveRobot(true, currentSpeed, true, currentSpeed, true, currentSpeed, true, currentSpeed);
+      }
 
-    else if(strafeRight)
-    {
-      moveRobot(true, currentSpeed, false, currentSpeed, false, currentSpeed, true, currentSpeed);
-    }
+      else if(forward && turnLeft)
+      {
+        moveRobot(false, currentSpeed*2, false, currentSpeed*2, false, 0, false, 0);
+      }
 
-    else if(backward)
-    {
-      moveRobot(false, currentSpeed, false, currentSpeed, false, currentSpeed, false, currentSpeed);
-    }
+      else if(forward && turnRight)
+      {
+        moveRobot(false, 0, false, 0, false, currentSpeed*2, false, currentSpeed*2);
+      }
 
-    else if(turnLeft)
-    {
-      moveRobot(true, currentSpeed, true, currentSpeed, false, currentSpeed, false, currentSpeed);
-    }
+      else if(strafeLeft)
+      {
+        moveRobot(false, currentSpeed, true, currentSpeed, true, currentSpeed, false, currentSpeed);
+      }
 
-    else if(turnRight)
-    {
-      moveRobot(false, currentSpeed,  false, currentSpeed, true, currentSpeed, true, currentSpeed);
-    }
-    else
-    {
-      moveRobot(false, 0, false, 0, false, 0, false, 0);
+      else if(strafeRight)
+      {
+        moveRobot(true, currentSpeed, false, currentSpeed, false, currentSpeed, true, currentSpeed);
+      }
+
+      else if(backward)
+      {
+        moveRobot(false, currentSpeed, false, currentSpeed, false, currentSpeed, false, currentSpeed);
+      }
+
+      else if(turnLeft)
+      {
+        moveRobot(true, currentSpeed, true, currentSpeed, false, currentSpeed, false, currentSpeed);
+      }
+
+      else if(turnRight)
+      {
+        moveRobot(false, currentSpeed,  false, currentSpeed, true, currentSpeed, true, currentSpeed);
+      }
+      else
+      {
+        moveRobot(false, 0, false, 0, false, 0, false, 0);
+      }
     }
   }
 }
