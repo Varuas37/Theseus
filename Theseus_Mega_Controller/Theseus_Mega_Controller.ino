@@ -1,6 +1,5 @@
-#include <PS4BT.h>
+  #include <PS4BT.h>
 #include <usbhub.h>
-#include <Servo.h>
 
 // Satisfy the IDE, which needs to see the include statment in the ino too.
 #ifdef dobogusinclude
@@ -20,10 +19,10 @@ const int PIN_FRONT_RIGHT_PWM = 4;
 const int PIN_BACK_LEFT_PWM   = 2;
 const int PIN_BACK_RIGHT_PWM  = 5;
 
-const int ARM_PIN = 8;
-const int CLAW_PIN = 9;
-const int ARM_SPEED = 5;
-const int CLAW_SPEED = 2;
+const int SERVO_STOP = 95;
+
+const int ARM_PIN = 9;
+const int CLAW_PIN = 10;
 
 const int WALK_SPEED = 64;
 const int RUN_SPEED = 127;
@@ -31,8 +30,6 @@ const int RUN_SPEED = 127;
 const int WALK_COLOR[3] = {0,0,255};
 const int RUN_COLOR[3] = {255,0,0};
 
-int armPos = 0;
-int clawPos = 0;
 
 bool runMode = true;
 int currentSpeed = WALK_SPEED;
@@ -56,19 +53,15 @@ PS4BT PS4(&Btd, PAIR);
 bool printAngle, printTouch;
 uint8_t oldL2Value, oldR2Value;
 
+int[2] unoMessage = {0, 0};
+
 void setup() 
 {
-  //More magic bluetooth stuff
-  Serial.begin(115200);
-#if !defined(__MIPSEL__)
-  while (!Serial); // Wait for serial port to connect - used on Leonardo, Teensy and other boards with built-in USB CDC serial connection
-#endif
+  
   if (Usb.Init() == -1) 
   {
-    Serial.print(F("\r\nOSC did not start"));
     while (1); // Halt
   }
-  Serial.print(F("\r\nPS4 Bluetooth Library Started"));
 
   // Put all pins we care about into the right mode)
   pinMode(PIN_FRONT_LEFT_DIR, OUTPUT);
@@ -81,16 +74,25 @@ void setup()
   pinMode(PIN_BACK_RIGHT_PWM, OUTPUT);
 
   // Setup servo controllers
-  arm.attach(ARM_PIN);
-  claw.attach(CLAW_PIN);
+ // pinMode(SERVO, OUTPUT);
+ //pinMode(ARM_PIN, OUTPUT);
+ //pinMode(CLAW_PIN, OUTPUT);n
+ // raise.attach(SERVO);
+ arm.attach(ARM_PIN);
+ claw.attach(CLAW_PIN);
+ arm.write(SERVO_STOP);
+ claw.write(SERVO_STOP);
 
   // Setup swag
   PS4.setLed(WALK_COLOR[0], WALK_COLOR[1], WALK_COLOR[2]);
-  
+
+
 }
 
 void loop() 
 {
+  Serial.begin(9600);
+  
   Usb.Task();
   if (PS4.connected()) 
   {
@@ -122,86 +124,93 @@ void loop()
         currentSpeed = RUN_SPEED;
       }
     }
+    
+    bool forward = PS4.getButtonPress(UP);
+    bool backward = PS4.getButtonPress(DOWN);
+    bool strafeLeft = PS4.getButtonPress(LEFT);
+    bool strafeRight = PS4.getButtonPress(RIGHT);
+    bool turnLeft = PS4.getButtonPress(CIRCLE);
+    bool turnRight = PS4.getButtonPress(SQUARE);
+    bool armUp = PS4.getButtonPress(R1);
+    bool armDown = PS4.getButtonPress(L1);
+    bool clawOpen = PS4.getButtonPress(TRIANGLE);
+    bool clawClose = PS4.getButtonPress(CROSS);
+
+    
+    if (armUp)
+    {
+      unoMessage[0] = 1;
+    }
+
+    else if (armDown)
+    {
+      unoMessage[0] = 2;
+    }
 
     else
     {
-      bool forward = PS4.getButtonPress(UP);
-      bool backward = PS4.getButtonPress(DOWN);
-      bool strafeLeft = PS4.getButtonPress(LEFT);
-      bool strafeRight = PS4.getButtonPress(RIGHT);
-      bool turnLeft = PS4.getButtonPress(CIRCLE);
-      bool turnRight = PS4.getButtonPress(SQUARE);
-      bool armUp = PS4.getButtonPress(R1);
-      bool armDown = PS4.getButtonPress(L1);
-      bool clawOpen = PS4.getButtonPress(TRIANGLE);
-      bool clawClose = PS4.getButtonPress(CROSS);
+      unoMessage[0] = 0;
+    }
 
-      if(armUp)
-      {
-        armPos = max(armPos + ARM_SPEED, 180);
-      }
+    if (clawOpen)
+    {
+      unoMessage[1] = 1;
+    }
 
-      else if(armDown)
-      {
-        armPos = max(armPos - ARM_SPEED, 0);
-      }
+    else if(clawClose)
+    {
+      unoMessage[1] = 2;
+    }
 
-      if(clawOpen)
-      {
-        clawPos = max(clawPos + CLAW_SPEED, 180);
-      }
+    else
+    {
+      unoMessage[1] = 0;
+    }
 
-      else if(clawClose)
-      {
-        clawPos = max(clawPos - CLAW_SPEED, 0);
-      }
+    Serial.write(unoMessage, 2);
+    
+    if (forward && !turnLeft && !turnRight)
+    {
+      moveRobot(true, currentSpeed, true, currentSpeed, true, currentSpeed, true, currentSpeed);
+    }
 
-      arm.write(armPos);
-      claw.write(clawPos);
+    else if(forward && turnLeft)
+    {
+      moveRobot(true, RUN_SPEED, true, RUN_SPEED, false, 0, false, 0);
+    }
 
-      if (forward && !turnLeft && !turnRight)
-      {
-        moveRobot(true, currentSpeed, true, currentSpeed, true, currentSpeed, true, currentSpeed);
-      }
+    else if(forward && turnRight)
+    {
+      moveRobot(false, 0, false, 0, true, RUN_SPEED, true, RUN_SPEED);
+    }
 
-      else if(forward && turnLeft)
-      {
-        moveRobot(true, RUN_SPEED, true, RUN_SPEED, false, 0, false, 0);
-      }
+    else if(strafeLeft)
+    {
+      moveRobot(false, currentSpeed, true, currentSpeed, true, currentSpeed, false, currentSpeed);
+    }
 
-      else if(forward && turnRight)
-      {
-        moveRobot(false, 0, false, 0, true, RUN_SPEED, true, RUN_SPEED);
-      }
+    else if(strafeRight)
+    {
+      moveRobot(true, currentSpeed, false, currentSpeed, false, currentSpeed, true, currentSpeed);
+    }
 
-      else if(strafeLeft)
-      {
-        moveRobot(false, currentSpeed, true, currentSpeed, true, currentSpeed, false, currentSpeed);
-      }
+    else if(backward)
+    {
+      moveRobot(false, currentSpeed, false, currentSpeed, false, currentSpeed, false, currentSpeed);
+    }
 
-      else if(strafeRight)
-      {
-        moveRobot(true, currentSpeed, false, currentSpeed, false, currentSpeed, true, currentSpeed);
-      }
+    else if(turnLeft)
+    {
+      moveRobot(true, currentSpeed, true, currentSpeed, false, currentSpeed, false, currentSpeed);
+    }
 
-      else if(backward)
-      {
-        moveRobot(false, currentSpeed, false, currentSpeed, false, currentSpeed, false, currentSpeed);
-      }
-
-      else if(turnLeft)
-      {
-        moveRobot(true, currentSpeed, true, currentSpeed, false, currentSpeed, false, currentSpeed);
-      }
-
-      else if(turnRight)
-      {
-        moveRobot(false, currentSpeed,  false, currentSpeed, true, currentSpeed, true, currentSpeed);
-      }
-      else
-      {
-        moveRobot(false, 0, false, 0, false, 0, false, 0);
-      }
+    else if(turnRight)
+    {
+      moveRobot(false, currentSpeed,  false, currentSpeed, true, currentSpeed, true, currentSpeed);
+    }
+    else
+    {
+      moveRobot(false, 0, false, 0, false, 0, false, 0);
     }
   }
 }
