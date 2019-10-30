@@ -1,3 +1,9 @@
+/*
+ * Programmed by Zavier Yohe - 2019
+ * Ctrl-F NOTE for important information
+ * Controls the Theseus mini-forklift robot created for ATMAE 
+ */
+
 #include <PS4BT.h>
 #include <usbhub.h>
 #include <Servo.h>
@@ -8,9 +14,7 @@
 #endif
 #include <SPI.h>
 
-const int DEADZONE = 13;
-const int STICK_CENTER = 127;
-
+// Defines the pins for wheel control
 const int PIN_FRONT_LEFT_DIR  = 24;
 const int PIN_FRONT_RIGHT_DIR = 28;
 const int PIN_BACK_LEFT_DIR   = 22;
@@ -20,59 +24,77 @@ const int PIN_FRONT_RIGHT_PWM = 4;
 const int PIN_BACK_LEFT_PWM   = 2;
 const int PIN_BACK_RIGHT_PWM  = 5;
 
+// Defines the pins for servo control
 const int ARM_PIN = 8;
 const int CLAW_PIN = 9;
-const int ARM_SPEED = 5;
-const int CLAW_SPEED = 2;
 
-const int SLOW_SPEED = 30;
-const int WALK_SPEED = 64;
-const int RUN_SPEED = 127;
+// Defines speed values
+const int SLOW_SPEED = 64;
+const int WALK_SPEED = 128;
+const int RUN_SPEED = 255;
 
+// Defines color values
 const int SLOW_COLOR[3] = {0,255,0};
 const int WALK_COLOR[3] = {0,0,255};
 const int RUN_COLOR[3] = {255,0,0};
 
-int armPos = 0;
-int clawPos = 0;
-
+/*
+ * Initializes speed values
+ *    NOTE: runMode 0 corresponds to slow, but pairing
+ * the USB Controller triggers runMode change, so it'll
+ * start at runMode 1. If the runMode button is changed,
+ * this must be changed or robot will default to slow.
+ */
+ 
 int runMode = 0;
-int currentSpeed = WALK_SPEED;
+int currentSpeed;
 
+/* 
+ *  Create servo objects
+ *    NOTE: The current servos are hacked LD20MG,
+ * removing the position sensor and bridging them with 
+ * resistors, allowing them to with the library. They 
+ * behave in a non-standard way; the stop value is around 90,
+ * but must be found per-servo via trial and error.
+ * Current arm servo's stop value is 95
+ * Current claw servo's stop value is 93       
+ */
 Servo arm;
 Servo claw;
 
 // Magic bluetooth setup stuff
 USB Usb;
-//USBHub Hub1(&Usb); // Some dongles have a hub inside
-BTD Btd(&Usb); // You have to create the Bluetooth Dongle instance like so
+BTD Btd(&Usb);
 
-/* You can create the instance of the PS4BT class in two ways */
-// This will start an inquiry and then pair with the PS4 controller - you only have to do this once
-// You will need to hold down the PS and Share button at the same time, the PS4 controller will then start to blink rapidly indicating that it is in pairing mode
-PS4BT PS4(&Btd, PAIR);
+/*
+ *    NOTE: Two ways to connect controller. ONLY use one! 
+ * To change connection modes, comment the currently-used line
+ * below, and uncomment the other.
+ * To pair controller, hold share, then press the PS button for 
+ * 3 seconds. Should flash quickly. If it pulses slowly, you did 
+ * it wrong.
+ * To connect a paired controller, press and hold PS button. 
+ * Connecting controllers is buggy; pairing should be preferred.
+ */
 
-// After that you can simply create the instance like so and then press the PS button on the device
+// Pair:
+PS4BT PS4(&Btd, PAIR); 
+// Connect:
 //PS4BT PS4(&Btd);
 
-bool printAngle, printTouch;
-uint8_t oldL2Value, oldR2Value;
+// Most important line
+String chair = "Dr. Lawrence";
 
+// Runs once when arduino starts
 void setup() 
 {
   //More magic bluetooth stuff
-  Serial.begin(115200);
-#if !defined(__MIPSEL__)
-  while (!Serial); // Wait for serial port to connect - used on Leonardo, Teensy and other boards with built-in USB CDC serial connection
-#endif
   if (Usb.Init() == -1) 
   {
-    Serial.print(F("\r\nOSC did not start"));
     while (1); // Halt
   }
-  Serial.print(F("\r\nPS4 Bluetooth Library Started"));
 
-  // Put all pins we care about into the right mode)
+  // Put all pins we care about into the right mode
   pinMode(PIN_FRONT_LEFT_DIR, OUTPUT);
   pinMode(PIN_BACK_LEFT_DIR, OUTPUT);
   pinMode(PIN_FRONT_RIGHT_DIR, OUTPUT);
@@ -86,31 +108,35 @@ void setup()
   arm.attach(ARM_PIN);
   claw.attach(CLAW_PIN);
   arm.write(95);
-
+  claw.write(93);
+  
   // Setup swag
   PS4.setLed(WALK_COLOR[0], WALK_COLOR[1], WALK_COLOR[2]);
   
 }
 
-int test = 90;
-
+// Runs approximately 100 times per second
 void loop() 
 {
+  // More magic Bluetooth stuff
   Usb.Task();
   if (PS4.connected()) 
   {
 
+    // Remote kill switch
     if (PS4.getButtonClick(OPTIONS))
     {
       while(1){}; // Halt
     }
 
+    // "Autonomously" moves robot forward a set distance to please the judges
     if (PS4.getButtonClick(TOUCHPAD))
     {
       moveRobot(true, WALK_SPEED, true, WALK_SPEED, true, WALK_SPEED, true, WALK_SPEED);
       delay(3250);
     }
-    
+
+    // Toggle run mode
     if(PS4.getButtonClick(SHARE))
     {
       if (runMode == 0)
@@ -135,137 +161,105 @@ void loop()
       }
     }
 
+
+
+    bool forward = PS4.getButtonPress(UP);
+    bool backward = PS4.getButtonPress(DOWN);
+    bool strafeLeft = PS4.getButtonPress(LEFT);
+    bool strafeRight = PS4.getButtonPress(RIGHT);
+    bool turnLeft = PS4.getButtonPress(CIRCLE);
+    bool turnRight = PS4.getButtonPress(SQUARE);
+    bool armUp = PS4.getButtonPress(R1);
+    bool armDown = PS4.getButtonPress(L1);
+    bool clawOpen = PS4.getButtonPress(TRIANGLE);
+    bool clawClose = PS4.getButtonPress(CROSS);
+
+    /*
+     * Arm controls
+     *    NOTE: Servo values are 0-180. 0 is ful reverse,
+     * 180 is full forward. Stop value is roughly 90,
+     * but due to the servo hack, this varies.
+     * See "Create servo objects" for more info.
+     */
+
+    if(armUp)
+    {
+      arm.write(0);
+    }
+
+    else if(armDown)
+    {
+      arm.write(180);
+    }
+
     else
     {
-      bool forward = PS4.getButtonPress(UP);
-      bool backward = PS4.getButtonPress(DOWN);
-      bool strafeLeft = PS4.getButtonPress(LEFT);
-      bool strafeRight = PS4.getButtonPress(RIGHT);
-      bool turnLeft = PS4.getButtonPress(CIRCLE);
-      bool turnRight = PS4.getButtonPress(SQUARE);
-      bool armUp = PS4.getButtonPress(R1);
-      bool armDown = PS4.getButtonPress(L1);
-      bool clawOpen = PS4.getButtonPress(TRIANGLE);
-      bool clawClose = PS4.getButtonPress(CROSS);
+      arm.write(95);
+    }
+    
 
-      if(armUp)
-      {
-        arm.write(180);
-      }
+    if(clawOpen)
+    {
+      claw.write(45);
+    }
 
-      else if(armDown)
-      {
-        arm.write(0);
-      }
+    else if(clawClose)
+    {
+      claw.write(135);
+    }
 
-      else
-      {
-        arm.write(95);
-      }
+    else
+    {
+      claw.write(93);
+    }
 
-     if(clawOpen)
-      {
-        claw.write(135);
-      }
+    /*
+     * Movement controls
+     *    NOTE: Current supported controls are forward,
+     * reverse, strafing, and turning in place.
+     * moveRobot takes pairs of direction and speed arguments. 
+     * True is forward, false is reverse. Speed values are 
+     * 0-255. These pairs correspond, in order, to the front-left,
+     * back-left, front-right, and back-right wheels.
+     */
 
-      else if(clawClose)
-      {
-        claw.write(45);
-      }
+    if (forward && !turnLeft && !turnRight)
+    {
+      moveRobot(true, currentSpeed, true, currentSpeed, true, currentSpeed, true, currentSpeed);
+    }
+    
+    else if(strafeLeft)
+    {
+      moveRobot(false, currentSpeed, true, currentSpeed, true, currentSpeed, false, currentSpeed);
+    }
 
-      else
-      {
-        claw.write(93);
-      }
+    else if(strafeRight)
+    {
+      moveRobot(true, currentSpeed, false, currentSpeed, false, currentSpeed, true, currentSpeed);
+    }
 
-      if (forward && !turnLeft && !turnRight)
-      {
-        moveRobot(true, currentSpeed, true, currentSpeed, true, currentSpeed, true, currentSpeed);
-      }
+    else if(backward)
+    {
+      moveRobot(false, currentSpeed, false, currentSpeed, false, currentSpeed, false, currentSpeed);
+    }
 
-      else if(forward && turnLeft)
-      {
-        moveRobot(false, currentSpeed*2, false, currentSpeed*2, false, 0, false, 0);
-      }
+    else if(turnLeft)
+    {
+      moveRobot(true, currentSpeed, true, currentSpeed, false, currentSpeed, false, currentSpeed);
+    }
 
-      else if(forward && turnRight)
-      {
-        moveRobot(false, 0, false, 0, false, currentSpeed*2, false, currentSpeed*2);
-      }
-
-      else if(strafeLeft)
-      {
-        moveRobot(false, currentSpeed, true, currentSpeed, true, currentSpeed, false, currentSpeed);
-      }
-
-      else if(strafeRight)
-      {
-        moveRobot(true, currentSpeed, false, currentSpeed, false, currentSpeed, true, currentSpeed);
-      }
-
-      else if(backward)
-      {
-        moveRobot(false, currentSpeed, false, currentSpeed, false, currentSpeed, false, currentSpeed);
-      }
-
-      else if(turnLeft)
-      {
-        moveRobot(true, currentSpeed, true, currentSpeed, false, currentSpeed, false, currentSpeed);
-      }
-
-      else if(turnRight)
-      {
-        moveRobot(false, currentSpeed,  false, currentSpeed, true, currentSpeed, true, currentSpeed);
-      }
-      else
-      {
-        moveRobot(false, 0, false, 0, false, 0, false, 0);
-      }
+    else if(turnRight)
+    {
+      moveRobot(false, currentSpeed,  false, currentSpeed, true, currentSpeed, true, currentSpeed);
+    }
+    
+    else
+    {
+      moveRobot(false, 0, false, 0, false, 0, false, 0);
     }
   }
 }
 
-// Helper function to check state of analog stick in regards to deadzone
-// Value of 0 means it is out of the deadzone, in the negative direction
-// Value of 2 means it is out of the deadzone, in the positive direction
-// value of 1 means it is in the deadzone
-int checkInDeadzone(int value)
-{
-  if (value < STICK_CENTER - DEADZONE)
-  {
-    return 0;
-  }
-
-  else if (value > STICK_CENTER + DEADZONE)
-  {
-    return 2;
-  }
-
-  else
-  {
-    return 1;
-  }
-}
-
-// Clamps value between minValue and maxValue
-// Has no effect on values between the two
-int clampInt(int value, int minValue, int maxValue)
-{
-  if (value < minValue)
-  {
-    return minValue;
-  }
-
-  else if (value > maxValue)
-  {
-    return maxValue;
-  }
-
-  else
-  {
-    return value;
-  }
-}
 
 void moveRobot(boolean dirFrontL, int powerFrontL, boolean dirBackL, int powerBackL, boolean dirFrontR, int powerFrontR, boolean dirBackR, int powerBackR)
 {
@@ -292,10 +286,10 @@ void moveRobot(boolean dirFrontL, int powerFrontL, boolean dirBackL, int powerBa
   digitalWrite(PIN_FRONT_RIGHT_DIR, FR);
   digitalWrite(PIN_BACK_RIGHT_DIR, BR);
 
-  int normalizedFrontL = clampInt(powerFrontL * 2, 0, 255);
-  int normalizedBackL = clampInt(powerBackL * 2, 0, 255);
-  int normalizedFrontR = clampInt(powerFrontR * 2, 0, 255);
-  int normalizedBackR = clampInt(powerBackR * 2, 0, 255);
+  int normalizedFrontL = powerFrontL;
+  int normalizedBackL = powerBackL;
+  int normalizedFrontR = powerFrontR;
+  int normalizedBackR = powerBackR;
   
   analogWrite(PIN_FRONT_LEFT_PWM, normalizedFrontL);
   analogWrite(PIN_BACK_LEFT_PWM, normalizedBackL);
